@@ -1,0 +1,105 @@
+<?php
+/* ================================
+   ULTRA LARGE UPLOADER — SINGLE FILE
+   Supports 500GB+ uploads
+   ================================ */
+
+if(isset($_FILES['chunk'])){
+    set_time_limit(0);
+    ignore_user_abort(true);
+
+    $dir = __DIR__."/uploads";
+    if(!is_dir($dir)) mkdir($dir,0777,true);
+
+    $name  = preg_replace("/[^a-zA-Z0-9._-]/","_",$_POST['name']);
+    $index = intval($_POST['index']);
+    $total = intval($_POST['total']);
+
+    move_uploaded_file($_FILES['chunk']['tmp_name'], "$dir/$name.part$index");
+
+    // Final merge
+    if($index === $total-1){
+        $out = fopen("$dir/$name","ab");
+        for($i=0;$i<$total;$i++){
+            $part = "$dir/$name.part$i";
+            if(file_exists($part)){
+                fwrite($out, file_get_contents($part));
+                unlink($part);
+            }
+        }
+        fclose($out);
+    }
+    exit("OK");
+}
+?>
+<!DOCTYPE html>
+<html>
+<head>
+<title>Ultra Large Upload System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial;background:#0b0b0b;color:#fff}
+.box{max-width:600px;margin:50px auto;background:#151515;padding:20px;border-radius:10px}
+.progress{height:22px;background:#333;border-radius:6px;overflow:hidden}
+.bar{height:100%;width:0;background:#00e676}
+small{opacity:.7}
+</style>
+</head>
+<body>
+
+<div class="box">
+<h2>Ultra Large File Upload</h2>
+<input type="file" id="file"><br><br>
+<button onclick="startUpload()">Start Upload</button><br><br>
+
+<div class="progress"><div id="bar" class="bar"></div></div>
+<p id="stat"></p>
+<small id="eta"></small>
+</div>
+
+<script>
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10MB
+
+async function startUpload(){
+    const file = document.getElementById("file").files[0];
+    if(!file) return alert("Select a file first");
+
+    let total = file.size;
+    let chunks = Math.ceil(total / CHUNK_SIZE);
+    let uploaded = 0;
+    let start = Date.now();
+
+    for(let i=0;i<chunks;i++){
+        let from = i * CHUNK_SIZE;
+        let to = Math.min(from + CHUNK_SIZE, total);
+        let blob = file.slice(from,to);
+
+        let fd = new FormData();
+        fd.append("chunk", blob);
+        fd.append("name", file.name);
+        fd.append("index", i);
+        fd.append("total", chunks);
+
+        await fetch("",{method:"POST",body:fd});
+
+        uploaded += blob.size;
+        let percent = Math.floor(uploaded / total * 100);
+        document.getElementById("bar").style.width = percent+"%";
+
+        let elapsed = (Date.now()-start)/1000;
+        let speed = uploaded/elapsed;
+        let remain = (total-uploaded)/speed;
+
+        document.getElementById("stat").innerText =
+          percent+"% | "+(speed/1024/1024).toFixed(2)+" MB/s";
+
+        document.getElementById("eta").innerText =
+          "Remaining: "+Math.ceil(remain)+" sec";
+    }
+
+    alert("UPLOAD COMPLETED");
+}
+</script>
+
+</body>
+</html>
